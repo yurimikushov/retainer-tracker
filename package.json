@@ -1,0 +1,21 @@
+{
+  "name": "retainer-tracker",
+  "version": "1.0.0",
+  "description": "Progressive Web App to track daily retainer wear time",
+  "main": "app.js",
+  "scripts": {
+    "start": "serve .",
+    "deploy": "gh-pages -d ."
+  },
+  "keywords": [
+    "pwa",
+    "retainer",
+    "tracker"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "gh-pages": "^6.1.1",
+    "serve": "^14.2.3"
+  }
+}
