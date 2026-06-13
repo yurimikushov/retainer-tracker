@@ -2,6 +2,7 @@
   "name": "retainer-tracker",
   "version": "1.0.0",
   "description": "Progressive Web App to track daily retainer wear time",
+  "homepage": "https://yurimikushov.github.io/retainer-tracker",
   "main": "app.js",
   "scripts": {
     "start": "serve .",
