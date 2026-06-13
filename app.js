@@ -23,6 +23,13 @@ const targetHoursInput = document.getElementById('target-hours-input');
 const settingsCancelBtn = document.getElementById('settings-cancel-btn');
 const settingsSaveBtn = document.getElementById('settings-save-btn');
 
+// Forgotten Checkout Elements
+const forgottenModal = document.getElementById('forgotten-modal');
+const forgottenTimeInput = document.getElementById('forgotten-time-input');
+const forgottenSubmitBtn = document.getElementById('forgotten-submit-btn');
+const forgottenKeepBtn = document.getElementById('forgotten-keep-btn');
+const forgottenDeleteBtn = document.getElementById('forgotten-delete-btn');
+
 // --- Helper Utilities ---
 
 // Load data from LocalStorage
@@ -104,10 +111,145 @@ function calculateDayDuration(date) {
   }, 0);
 }
 
+// Helper to convert UTC date string to local HH:MM string
+function utcToLocalTimeStr(utcStr) {
+  if (!utcStr) return '';
+  const date = new Date(utcStr);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+// --- Day Crossover & Forgotten Checkout Handling ---
+
+// Perform splits on midnight crossings
+function checkDayCrossover() {
+  let active = getActiveSession();
+  if (!active) return;
+  
+  const todayStr = getLocalISODate();
+  let activeDateStr = active.date;
+  
+  while (activeDateStr !== todayStr) {
+    const [year, month, day] = activeDateStr.split('-').map(Number);
+    // Local midnight of next day
+    const nextDayStart = new Date(year, month - 1, day + 1, 0, 0, 0, 0);
+    const nextDayISO = nextDayStart.toISOString();
+    
+    // Close current session at midnight
+    active.session.end = nextDayISO;
+    
+    const nextDayStr = getLocalISODate(nextDayStart);
+    if (!appData.history[nextDayStr]) {
+      appData.history[nextDayStr] = { sessions: [] };
+    }
+    
+    const newSession = {
+      start: nextDayISO,
+      end: null,
+      ignoreForgottenPrompt: active.session.ignoreForgottenPrompt || false
+    };
+    appData.history[nextDayStr].sessions.push(newSession);
+    
+    saveData();
+    activeDateStr = nextDayStr;
+    active = { date: nextDayStr, session: newSession };
+  }
+}
+
+// Verify if checked-in session exceeds 12h
+function checkForgottenCheckout() {
+  const active = getActiveSession();
+  if (!active) {
+    if (forgottenModal) forgottenModal.classList.add('hidden');
+    return;
+  }
+  
+  const startTime = new Date(active.session.start).getTime();
+  const elapsed = Date.now() - startTime;
+  
+  if (elapsed > 12 * 60 * 60 * 1000 && !active.session.ignoreForgottenPrompt) {
+    if (forgottenModal && forgottenModal.classList.contains('hidden')) {
+      forgottenModal.classList.remove('hidden');
+      
+      const defaultEnd = new Date(startTime + appData.targetHours * 60 * 60 * 1000);
+      let defaultTime = defaultEnd;
+      if (defaultTime.getTime() > Date.now()) {
+        defaultTime = new Date();
+      }
+      if (forgottenTimeInput) {
+        forgottenTimeInput.value = utcToLocalTimeStr(defaultTime.toISOString());
+      }
+    }
+  } else {
+    if (forgottenModal) forgottenModal.classList.add('hidden');
+  }
+}
+
+function handleForgottenSubmit() {
+  const active = getActiveSession();
+  if (!active) return;
+  
+  const timeVal = forgottenTimeInput.value;
+  if (!timeVal) {
+    alert('Please enter a valid time.');
+    return;
+  }
+  
+  const [year, month, day] = active.date.split('-').map(Number);
+  const [hours, minutes] = timeVal.split(':').map(Number);
+  const checkoutDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
+  
+  const startMs = new Date(active.session.start).getTime();
+  const checkoutMs = checkoutDate.getTime();
+  
+  if (checkoutMs <= startMs) {
+    alert('Checkout time must be after check-in time: ' + utcToLocalTimeStr(active.session.start));
+    return;
+  }
+  
+  if (checkoutMs > Date.now()) {
+    alert('Checkout time cannot be in the future.');
+    return;
+  }
+  
+  active.session.end = checkoutDate.toISOString();
+  saveData();
+  forgottenModal.classList.add('hidden');
+  updateUI();
+}
+
+function handleForgottenKeep() {
+  const active = getActiveSession();
+  if (active) {
+    active.session.ignoreForgottenPrompt = true;
+    saveData();
+  }
+  forgottenModal.classList.add('hidden');
+  updateUI();
+}
+
+function handleForgottenDelete() {
+  const active = getActiveSession();
+  if (!active) return;
+  
+  const day = appData.history[active.date];
+  if (day && day.sessions) {
+    day.sessions = day.sessions.filter(s => s !== active.session);
+    if (day.sessions.length === 0) {
+      delete appData.history[active.date];
+    }
+    saveData();
+  }
+  forgottenModal.classList.add('hidden');
+  updateUI();
+}
+
 // --- UI Rendering ---
 
 // Update Progress Ring Visual
 function setProgress(percent) {
+  if (!progressRingBar) return;
   const circumference = 660; // 2 * pi * r (r=105)
   const offset = circumference - (Math.min(percent, 100) / 100) * circumference;
   progressRingBar.style.strokeDashoffset = offset;
@@ -115,48 +257,60 @@ function setProgress(percent) {
 
 // Full UI update
 function updateUI() {
+  // Always verify crossover and forgotten limits first
+  checkDayCrossover();
+  checkForgottenCheckout();
+
   const today = getLocalISODate();
   const targetMs = appData.targetHours * 60 * 60 * 1000;
   const todayTotalMs = calculateDayDuration(today);
   
   // Update Goal Display
-  targetDisplayValue.textContent = appData.targetHours;
-  targetHoursInput.value = appData.targetHours;
+  if (targetDisplayValue) targetDisplayValue.textContent = appData.targetHours;
+  if (targetHoursInput) targetHoursInput.value = appData.targetHours;
   
   // Update Clock / Progress
-  timerDisplay.textContent = formatDuration(todayTotalMs);
+  if (timerDisplay) timerDisplay.textContent = formatDuration(todayTotalMs);
   
   const remainingMs = targetMs - todayTotalMs;
-  remainingDisplay.textContent = formatRemaining(remainingMs);
+  if (remainingDisplay) remainingDisplay.textContent = formatRemaining(remainingMs);
   
   const progressPercent = (todayTotalMs / targetMs) * 100;
   setProgress(progressPercent);
   
-  if (todayTotalMs >= targetMs) {
-    goalBadge.classList.remove('hidden');
-  } else {
-    goalBadge.classList.add('hidden');
+  if (goalBadge) {
+    if (todayTotalMs >= targetMs) {
+      goalBadge.classList.remove('hidden');
+    } else {
+      goalBadge.classList.add('hidden');
+    }
   }
   
   // Check active state
   const active = getActiveSession();
   if (active) {
-    statusIndicator.textContent = "Retainer is in";
-    statusIndicator.className = "status-text text-primary-color"; // Custom visual tag
-    statusIndicator.style.color = "var(--color-primary)";
+    if (statusIndicator) {
+      statusIndicator.textContent = "Retainer is in";
+      statusIndicator.style.color = "var(--color-primary)";
+    }
     
-    mainToggleBtn.className = "btn-check-in";
-    mainToggleBtn.querySelector('span').textContent = "Check Out";
+    if (mainToggleBtn) {
+      mainToggleBtn.className = "btn-check-in";
+      mainToggleBtn.querySelector('span').textContent = "Check Out";
+    }
     
     // Make sure timer is ticking
     startVisualTicker();
   } else {
-    statusIndicator.textContent = "Retainer is out";
-    statusIndicator.className = "status-text text-muted";
-    statusIndicator.style.color = "var(--text-muted)";
+    if (statusIndicator) {
+      statusIndicator.textContent = "Retainer is out";
+      statusIndicator.style.color = "var(--text-muted)";
+    }
     
-    mainToggleBtn.className = "btn-check-out";
-    mainToggleBtn.querySelector('span').textContent = "Check In";
+    if (mainToggleBtn) {
+      mainToggleBtn.className = "btn-check-out";
+      mainToggleBtn.querySelector('span').textContent = "Check In";
+    }
     
     stopVisualTicker();
   }
@@ -183,6 +337,8 @@ function stopVisualTicker() {
 // Toggle wear state
 function handleToggle() {
   const today = getLocalISODate();
+  // Sync days before toggling
+  checkDayCrossover();
   const active = getActiveSession();
   const nowISO = new Date().toISOString();
   
@@ -206,14 +362,15 @@ function handleToggle() {
 
 // Modal handling
 function openSettings() {
-  settingsModal.classList.remove('hidden');
+  if (settingsModal) settingsModal.classList.remove('hidden');
 }
 
 function closeSettings() {
-  settingsModal.classList.add('hidden');
+  if (settingsModal) settingsModal.classList.add('hidden');
 }
 
 function saveSettings() {
+  if (!targetHoursInput) return;
   const val = parseInt(targetHoursInput.value, 10);
   if (val >= 1 && val <= 24) {
     appData.targetHours = val;
@@ -243,6 +400,10 @@ if (settingsCancelBtn) {
 if (settingsSaveBtn) {
   settingsSaveBtn.addEventListener('click', saveSettings);
 }
+
+if (forgottenSubmitBtn) forgottenSubmitBtn.addEventListener('click', handleForgottenSubmit);
+if (forgottenKeepBtn) forgottenKeepBtn.addEventListener('click', handleForgottenKeep);
+if (forgottenDeleteBtn) forgottenDeleteBtn.addEventListener('click', handleForgottenDelete);
 
 // Initial Load
 document.addEventListener('DOMContentLoaded', () => {
