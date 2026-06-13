@@ -39,6 +39,10 @@ const exportBtn = document.getElementById('export-btn');
 const importTriggerBtn = document.getElementById('import-trigger-btn');
 const importFileInput = document.getElementById('import-file-input');
 
+// Service Worker update toast elements
+const updateBanner = document.getElementById('update-banner');
+const updateBtn = document.getElementById('update-btn');
+
 // --- Helper Utilities ---
 
 // Load data from LocalStorage
@@ -670,6 +674,38 @@ function openSettings() {
   if (settingsModal) settingsModal.classList.remove('hidden');
 }
 
+// Service Worker Registration
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then((reg) => {
+          reg.addEventListener('updatefound', () => {
+            const installingWorker = reg.installing;
+            installingWorker.addEventListener('statechange', () => {
+              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // Show update banner
+                if (updateBanner) updateBanner.classList.remove('hidden');
+              }
+            });
+          });
+        })
+        .catch((err) => {
+          console.error('Service Worker registration failed:', err);
+        });
+    });
+
+    // Handle controller change (reloads page when the active service worker updates)
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        window.location.reload();
+        refreshing = true;
+      }
+    });
+  }
+}
+
 function closeSettings() {
   if (settingsModal) settingsModal.classList.add('hidden');
 }
@@ -764,9 +800,23 @@ if (importTriggerBtn) {
 }
 if (importFileInput) importFileInput.addEventListener('change', handleImport);
 
+// Update Banner Action
+if (updateBtn) {
+  updateBtn.addEventListener('click', () => {
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      if (reg && reg.waiting) {
+        reg.waiting.postMessage('skipWaiting');
+      }
+    });
+  });
+}
+
 // Initial Load
 document.addEventListener('DOMContentLoaded', () => {
   loadData();
+  // Register Service Worker
+  registerServiceWorker();
+  
   // Call split crossovers before rendering anything
   checkDayCrossover();
   
