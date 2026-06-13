@@ -35,6 +35,9 @@ const forgottenDeleteBtn = document.getElementById('forgotten-delete-btn');
 
 // History Elements
 const historyListContainer = document.getElementById('history-list');
+const exportBtn = document.getElementById('export-btn');
+const importTriggerBtn = document.getElementById('import-trigger-btn');
+const importFileInput = document.getElementById('import-file-input');
 
 // --- Helper Utilities ---
 
@@ -257,6 +260,84 @@ function handleForgottenKeep() {
   }
   forgottenModal.classList.add('hidden');
   updateUI();
+}
+
+// --- Import / Export Logic ---
+
+function handleExport() {
+  const dataStr = JSON.stringify(appData, null, 2);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'retainer_tracker_backup.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function handleImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    try {
+      const imported = JSON.parse(event.target.result);
+      
+      // Structure Validation
+      if (typeof imported !== 'object' || imported === null) {
+        throw new Error('Data must be a valid JSON object.');
+      }
+      
+      if (typeof imported.targetHours !== 'number' || imported.targetHours < 1 || imported.targetHours > 24) {
+        imported.targetHours = 6; // fallback/default
+      }
+      
+      if (typeof imported.history !== 'object' || imported.history === null) {
+        throw new Error('Data must contain a history object.');
+      }
+      
+      // Validate history dates and sessions
+      for (const date of Object.keys(imported.history)) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          throw new Error(`Invalid date key format: ${date}`);
+        }
+        
+        const dayObj = imported.history[date];
+        if (!dayObj.sessions || !Array.isArray(dayObj.sessions)) {
+          throw new Error(`History for ${date} must contain a sessions array.`);
+        }
+        
+        for (const session of dayObj.sessions) {
+          if (!session.start || isNaN(Date.parse(session.start))) {
+            throw new Error(`Session in ${date} contains an invalid start timestamp.`);
+          }
+          if (session.end !== null && (isNaN(Date.parse(session.end)) || Date.parse(session.end) < Date.parse(session.start))) {
+            throw new Error(`Session in ${date} contains an invalid end timestamp.`);
+          }
+        }
+      }
+      
+      // Validation passed! Save and refresh
+      appData = imported;
+      saveData();
+      alert('History imported successfully!');
+      
+      if (historyListContainer) {
+        renderHistory();
+      } else {
+        updateUI();
+      }
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+    }
+    // Reset file input value to allow importing the same file again
+    importFileInput.value = '';
+  };
+  reader.readAsText(file);
 }
 
 function handleForgottenDelete() {
@@ -673,6 +754,15 @@ if (historyListContainer) {
     }
   });
 }
+
+// Import/Export Bindings
+if (exportBtn) exportBtn.addEventListener('click', handleExport);
+if (importTriggerBtn) {
+  importTriggerBtn.addEventListener('click', () => {
+    if (importFileInput) importFileInput.click();
+  });
+}
+if (importFileInput) importFileInput.addEventListener('change', handleImport);
 
 // Initial Load
 document.addEventListener('DOMContentLoaded', () => {
