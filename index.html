@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Retainer Tracker</title>
+  
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="A lightweight, mobile-first Progressive Web App to track your daily retainer wear time, manage history, and stay on track.">
+  <meta name="theme-color" content="#6b46c1">
+  
+  <!-- PWA iOS Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Retainer">
+  
+  <!-- Manifest & Favicon -->
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <!-- Update Notification Banner -->
+  <div id="update-banner" class="banner hidden" role="alert">
+    <span>New version available!</span>
+    <button id="update-btn" class="btn btn-small btn-primary">Refresh</button>
+  </div>
+
+  <div class="app-container">
+    <header class="app-header">
+      <h1 class="app-title">Retainer Tracker</h1>
+      <a href="./history.html" id="nav-history-btn" class="header-icon-btn" aria-label="View History">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+      </a>
+    </header>
+
+    <main class="app-content">
+      <!-- Quick Settings / Target Display -->
+      <section class="target-section">
+        <div class="target-card">
+          <span class="target-label">Daily Goal</span>
+          <button id="settings-trigger-btn" class="target-value-btn" aria-label="Change Target Hours">
+            <span id="target-display-value">6</span>h
+            <svg class="edit-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- Circular Progress Card -->
+      <section class="progress-section">
+        <div class="progress-circle-container">
+          <svg class="progress-ring" width="240" height="240">
+            <!-- Background circle -->
+            <circle class="progress-ring-bg" stroke="var(--bg-ring)" stroke-width="12" fill="transparent" r="105" cx="120" cy="120" />
+            <!-- Active progress circle -->
+            <circle id="progress-ring-bar" class="progress-ring-bar" stroke="var(--color-primary)" stroke-width="12" fill="transparent" r="105" cx="120" cy="120" stroke-linecap="round" />
+          </svg>
+          <div class="progress-text-overlay">
+            <div id="timer-display" class="timer-value">00:00:00</div>
+            <div id="remaining-display" class="timer-remaining">6h 00m remaining</div>
+            <div id="goal-badge" class="badge badge-success hidden">Goal Met! 🎉</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Action Section -->
+      <section class="action-section">
+        <div id="status-indicator" class="status-text text-muted">Retainer is out</div>
+        <button id="main-toggle-btn" class="btn-check-out" aria-label="Toggle retainer wear state">
+          <span id="toggle-btn-label">Check In</span>
+        </button>
+      </section>
+    </main>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="modal-card">
+      <h2 id="settings-title" class="modal-title">Goal Settings</h2>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="target-hours-input" class="form-label">Daily Target (Hours)</label>
+          <input type="number" id="target-hours-input" class="form-input" min="1" max="24" value="6">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="settings-cancel-btn" class="btn btn-secondary">Cancel</button>
+        <button id="settings-save-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Forgotten Checkout Modal -->
+  <div id="forgotten-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="forgotten-title">
+    <div class="modal-card">
+      <h2 id="forgotten-title" class="modal-title">Forgot to Check Out?</h2>
+      <div class="modal-body">
+        <p class="modal-description">You have been checked in for over 12 hours. Please select the correct time you took your retainer out.</p>
+        <div class="form-group">
+          <label for="forgotten-time-input" class="form-label">Actual Checkout Time</label>
+          <input type="time" id="forgotten-time-input" class="form-input">
+        </div>
+      </div>
+      <div class="modal-actions-vertical">
+        <button id="forgotten-submit-btn" class="btn btn-primary w-full">Update Session</button>
+        <button id="forgotten-keep-btn" class="btn btn-secondary w-full">I'm Still Wearing It</button>
+        <button id="forgotten-delete-btn" class="btn btn-danger w-full">Delete This Session</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
