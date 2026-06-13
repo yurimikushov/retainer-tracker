@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Retainer Tracker - History</title>
+  
+  <meta name="theme-color" content="#6b46c1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <a href="./index.html" class="header-icon-btn" aria-label="Back to Tracker">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+      </a>
+      <h1 class="app-title">History</h1>
+      <div style="width: 40px;"></div> <!-- Visual Spacer -->
+    </header>
+
+    <main class="app-content">
+      <!-- Scrollable History List -->
+      <div id="history-list" class="history-list">
+        <!-- Dynmically Loaded via app.js -->
+        <div class="empty-state">
+          <div class="empty-state-icon">📅</div>
+          <p>Loading your history...</p>
+        </div>
+      </div>
+      
+      <!-- Import / Export Actions -->
+      <section class="portability-section">
+        <button id="export-btn" class="btn btn-secondary">Export JSON</button>
+        <button id="import-trigger-btn" class="btn btn-secondary">Import JSON</button>
+        <input type="file" id="import-file-input" class="hidden-file-input" accept=".json">
+      </section>
+    </main>
+  </div>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>

@@ -7,6 +7,9 @@ let appData = {
 // Timer Interval
 let timerInterval = null;
 
+// Track which history cards are expanded (preserves state on redraw)
+const expandedDates = new Set();
+
 // DOM Elements
 const timerDisplay = document.getElementById('timer-display');
 const remainingDisplay = document.getElementById('remaining-display');
@@ -29,6 +32,9 @@ const forgottenTimeInput = document.getElementById('forgotten-time-input');
 const forgottenSubmitBtn = document.getElementById('forgotten-submit-btn');
 const forgottenKeepBtn = document.getElementById('forgotten-keep-btn');
 const forgottenDeleteBtn = document.getElementById('forgotten-delete-btn');
+
+// History Elements
+const historyListContainer = document.getElementById('history-list');
 
 // --- Helper Utilities ---
 
@@ -84,6 +90,39 @@ function formatRemaining(ms) {
   return `${h}h ${String(m).padStart(2, '0')}m remaining`;
 }
 
+// Format duration short (e.g. 5h 23m)
+function formatDurationShort(ms) {
+  if (ms < 0) ms = 0;
+  const minutes = Math.floor(ms / (1000 * 60));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h ${m}m`;
+}
+
+// Format date key into display format (e.g. Wed, Oct 25, 2023)
+function formatDateHeader(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Convert local date and time string (HH:MM) to UTC ISO string
+function localTimeToUTC(dateStr, timeStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  const localDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
+  return localDate.toISOString();
+}
+
+// Helper to convert UTC date string to local HH:MM string
+function utcToLocalTimeStr(utcStr) {
+  if (!utcStr) return '';
+  const date = new Date(utcStr);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 // Check if checked in (last session of today or any recent day has end = null)
 function getActiveSession() {
   const dates = Object.keys(appData.history).sort().reverse();
@@ -109,15 +148,6 @@ function calculateDayDuration(date) {
     const end = session.end ? new Date(session.end).getTime() : Date.now();
     return acc + (end - start);
   }, 0);
-}
-
-// Helper to convert UTC date string to local HH:MM string
-function utcToLocalTimeStr(utcStr) {
-  if (!utcStr) return '';
-  const date = new Date(utcStr);
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
 }
 
 // --- Day Crossover & Forgotten Checkout Handling ---
@@ -245,7 +275,7 @@ function handleForgottenDelete() {
   updateUI();
 }
 
-// --- UI Rendering ---
+// --- UI Rendering (Main Dashboard) ---
 
 // Update Progress Ring Visual
 function setProgress(percent) {
@@ -332,6 +362,200 @@ function stopVisualTicker() {
   }
 }
 
+// --- History Page Rendering & Editing ---
+
+function renderHistory() {
+  if (!historyListContainer) return;
+  
+  // Sort dates in history in reverse chronological order
+  const dates = Object.keys(appData.history).sort().reverse();
+  
+  if (dates.length === 0) {
+    historyListContainer.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📅</div>
+        <p>No history logged yet.</p>
+        <p>Check in on the home screen to start tracking.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  let html = '';
+  dates.forEach(date => {
+    const day = appData.history[date];
+    const totalMs = calculateDayDuration(date);
+    const targetMs = appData.targetHours * 60 * 60 * 1000;
+    const goalMet = totalMs >= targetMs;
+    const isExpanded = expandedDates.has(date);
+    
+    let sessionsHtml = '';
+    if (day.sessions && day.sessions.length > 0) {
+      day.sessions.forEach((session, idx) => {
+        const startStr = utcToLocalTimeStr(session.start);
+        const endStr = session.end ? utcToLocalTimeStr(session.end) : '';
+        const isActive = session.end === null;
+        
+        sessionsHtml += `
+          <div class="session-edit-row">
+            <div class="time-input-group">
+              <label class="form-label">Check In</label>
+              <input type="time" class="form-input start-time-input" value="${startStr}" data-session-idx="${idx}" data-date="${date}">
+            </div>
+            <div class="time-input-group">
+              <label class="form-label">Check Out</label>
+              <input type="time" class="form-input end-time-input" value="${endStr}" data-session-idx="${idx}" data-date="${date}" ${isActive ? 'disabled placeholder="Active"' : ''}>
+            </div>
+            <button class="delete-session-btn" data-session-idx="${idx}" data-date="${date}" aria-label="Delete Session">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
+          </div>
+        `;
+      });
+    } else {
+      sessionsHtml = '<p class="text-muted" style="font-size: 0.9rem;">No sessions logged.</p>';
+    }
+    
+    html += `
+      <div class="history-card ${isExpanded ? 'expanded' : ''}" data-date="${date}">
+        <div class="history-card-header">
+          <span class="history-date">${formatDateHeader(date)}</span>
+          <div class="history-stats">
+            <span class="history-duration">${formatDurationShort(totalMs)}</span>
+            ${goalMet ? '<span class="badge badge-success">Goal Met</span>' : ''}
+          </div>
+        </div>
+        <div class="history-card-details">
+          <div class="sessions-title">Sessions</div>
+          <div class="sessions-list" style="display: flex; flex-direction: column; gap: 12px;">
+            ${sessionsHtml}
+          </div>
+          <div class="history-card-actions">
+            <button class="btn btn-small btn-secondary add-session-btn" data-date="${date}">+ Add Session</button>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  
+  historyListContainer.innerHTML = html;
+}
+
+// Find first non-overlapping hour slot on a day to pre-fill a new session
+function findFreeSessionSlot(date) {
+  const day = appData.history[date];
+  if (!day || !day.sessions || day.sessions.length === 0) {
+    return {
+      start: localTimeToUTC(date, "12:00"),
+      end: localTimeToUTC(date, "13:00")
+    };
+  }
+  
+  for (let h = 8; h < 23; h++) {
+    const startStr = `${String(h).padStart(2, '0')}:00`;
+    const endStr = `${String(h + 1).padStart(2, '0')}:00`;
+    const startISO = localTimeToUTC(date, startStr);
+    const endISO = localTimeToUTC(date, endStr);
+    
+    // Check overlap
+    const overlap = day.sessions.some(s => {
+      const sStart = new Date(s.start).getTime();
+      const sEnd = s.end ? new Date(s.end).getTime() : Date.now();
+      const testStart = new Date(startISO).getTime();
+      const testEnd = new Date(endISO).getTime();
+      return (testStart < sEnd && testEnd > sStart);
+    });
+    
+    if (!overlap) {
+      return { start: startISO, end: endISO };
+    }
+  }
+  
+  return {
+    start: localTimeToUTC(date, "00:00"),
+    end: localTimeToUTC(date, "00:30")
+  };
+}
+
+// Handle session editing with validation
+function handleTimeChange(date, sessionIdx, field, value) {
+  const day = appData.history[date];
+  if (!day || !day.sessions || !day.sessions[sessionIdx]) return;
+  
+  const session = day.sessions[sessionIdx];
+  const oldVal = session[field];
+  
+  const newISO = localTimeToUTC(date, value);
+  session[field] = newISO;
+  
+  // Rule 1: Check-in before check-out
+  if (session.end !== null) {
+    const sTime = new Date(session.start).getTime();
+    const eTime = new Date(session.end).getTime();
+    if (sTime >= eTime) {
+      alert("Invalid time: Check-in time must be before check-out time.");
+      session[field] = oldVal;
+      renderHistory();
+      return;
+    }
+  }
+  
+  // Rule 2: Overlapping check
+  const sortedSessions = [...day.sessions].map((s, idx) => ({
+    start: new Date(s.start).getTime(),
+    end: s.end ? new Date(s.end).getTime() : Date.now(),
+    originalIdx: idx
+  })).sort((a, b) => a.start - b.start);
+  
+  let hasOverlap = false;
+  for (let i = 0; i < sortedSessions.length - 1; i++) {
+    if (sortedSessions[i].end > sortedSessions[i + 1].start) {
+      hasOverlap = true;
+      break;
+    }
+  }
+  
+  if (hasOverlap) {
+    alert("Invalid time: Sessions cannot overlap on the same day.");
+    session[field] = oldVal;
+    renderHistory();
+    return;
+  }
+  
+  saveData();
+  renderHistory();
+}
+
+// Add empty session slot
+function handleAddSession(date) {
+  if (!appData.history[date]) {
+    appData.history[date] = { sessions: [] };
+  }
+  
+  const slot = findFreeSessionSlot(date);
+  appData.history[date].sessions.push(slot);
+  
+  saveData();
+  renderHistory();
+}
+
+// Delete session
+function handleDeleteSession(date, sessionIdx) {
+  const day = appData.history[date];
+  if (!day || !day.sessions) return;
+  
+  day.sessions.splice(sessionIdx, 1);
+  if (day.sessions.length === 0) {
+    delete appData.history[date];
+  }
+  
+  saveData();
+  renderHistory();
+}
+
 // --- Event Handlers & Core Action ---
 
 // Toggle wear state
@@ -405,8 +629,60 @@ if (forgottenSubmitBtn) forgottenSubmitBtn.addEventListener('click', handleForgo
 if (forgottenKeepBtn) forgottenKeepBtn.addEventListener('click', handleForgottenKeep);
 if (forgottenDeleteBtn) forgottenDeleteBtn.addEventListener('click', handleForgottenDelete);
 
+// History View Event Delegation
+if (historyListContainer) {
+  historyListContainer.addEventListener('click', (e) => {
+    // Card header toggle
+    const header = e.target.closest('.history-card-header');
+    if (header) {
+      const card = header.closest('.history-card');
+      const date = card.dataset.date;
+      if (card.classList.contains('expanded')) {
+        card.classList.remove('expanded');
+        expandedDates.delete(date);
+      } else {
+        card.classList.add('expanded');
+        expandedDates.add(date);
+      }
+      return;
+    }
+    
+    // Add session button
+    const addBtn = e.target.closest('.add-session-btn');
+    if (addBtn) {
+      handleAddSession(addBtn.dataset.date);
+      return;
+    }
+    
+    // Delete session button
+    const deleteBtn = e.target.closest('.delete-session-btn');
+    if (deleteBtn) {
+      const idx = parseInt(deleteBtn.dataset.sessionIdx, 10);
+      handleDeleteSession(deleteBtn.dataset.date, idx);
+      return;
+    }
+  });
+  
+  historyListContainer.addEventListener('change', (e) => {
+    const input = e.target.closest('.start-time-input, .end-time-input');
+    if (input) {
+      const idx = parseInt(input.dataset.sessionIdx, 10);
+      const date = input.dataset.date;
+      const field = input.classList.contains('start-time-input') ? 'start' : 'end';
+      handleTimeChange(date, idx, field, input.value);
+    }
+  });
+}
+
 // Initial Load
 document.addEventListener('DOMContentLoaded', () => {
   loadData();
-  updateUI();
+  // Call split crossovers before rendering anything
+  checkDayCrossover();
+  
+  if (historyListContainer) {
+    renderHistory();
+  } else {
+    updateUI();
+  }
 });
